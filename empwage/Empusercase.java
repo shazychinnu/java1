@@ -18,7 +18,8 @@ public class Empusercase{
 
 		//Print if employee is present or absent
 		if(presence==1){
-			System.out.println("Employee is present");
+                        double wage=utils.wageCalculation();
+			System.out.println("Employee wage is:"+wage);
 		}
 		else{
 			System.out.println("Employee is absent");
@@ -35,7 +36,7 @@ public class Empusercase{
 	*check if the employee is present or not
 	*/
 
-        public int isPresent(){
+         public int isPresent(){
                 int IS_PRESENT=1;
                 double isPresentEmp=Math.floor(Math.random()*10)%2;
                 if(isPresentEmp==IS_PRESENT){
@@ -45,4 +46,17 @@ public class Empusercase{
                         return(0);
                 }
         }
+
+        /**
+        *calculate the employee wage
+        */
+
+	 public double wageCalculation(){
+		double wagePerHour=20;
+		double fullDay=8;
+	        double empWage;
+                empWage=wagePerHour*fullDay;
+		return(empWage);
+	}
+
 }
