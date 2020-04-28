@@ -15,21 +15,29 @@ public class Empusercase{
 		//Declare an empUtils object
 		empUtils utils=new empUtils();
 		int presence=utils.isPresent();
-
-		//Print if employee is present or absent
-		if(presence==1){
-                        if(utils.isFullTime()==1){
+                int  fullTime=utils.isFullTime();
+		//Check if the employee is present 
+		switch(presence){
+		case 1:
+			//Check if the employee works fulltime or not
+			switch(fullTime){
+			case 1:
+				//Display the wage calculated
 				System.out.println("Employee wage for full time is "+ utils.FtWageCalculation());
-			}
-			else{
+			break;
+			case 0:
 				System.out.println("Employee wage for part time is "+ utils.PtWageCalculation());
+			break;
 			}
-		}
-		else{
+		break;
+
+		case 0:
 			System.out.println("Employee is absent");
+		break;
 		}
 	}
 }
+		
 /** 
 * Emp utils class
 * @ author Aravind
