@@ -16,6 +16,7 @@ public class Empusercase{
 		empUtils utils=new empUtils();
 		int presence=utils.isPresent();
                 int  fullTime=utils.isFullTime();
+                 int days=1;
 		//Check if the employee is present 
 		switch(presence){
 		case 1:
@@ -23,10 +24,19 @@ public class Empusercase{
 			switch(fullTime){
 			case 1:
 				//Display the wage calculated
-				System.out.println("Employee wage for full time is "+ utils.FtWageCalculation());
+				while(days<21){
+					double totalWage=days*utils.FtWageCalculation();
+					System.out.println("Employee wage for full time for day "+ days +" is "+ totalWage);
+					days++;
+				}
 			break;
 			case 0:
-				System.out.println("Employee wage for part time is "+ utils.PtWageCalculation());
+				//Display the wage calculated
+                                while(days<21){
+                                        double totalWage=days*utils.PtWageCalculation();
+                                        System.out.println("Employee wage for part time for day "+ days +" is "+ totalWage);
+                                        days++;
+                                }
 			break;
 			}
 		break;
@@ -37,6 +47,7 @@ public class Empusercase{
 		}
 	}
 }
+
 		
 /** 
 * Emp utils class
