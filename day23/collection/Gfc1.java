@@ -1,6 +1,6 @@
 import java.util.LinkedList; 
   
-public class Gfc
+public class Gfc1
  { 
     // Main method 
     public static void main(String[] args) 
