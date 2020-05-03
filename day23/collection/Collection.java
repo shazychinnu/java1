@@ -1,18 +1,15 @@
 import java.util.*;  
 public class Collection{  
 public static void main(String args[]){  
-//Creating arraylist
-ArrayList<String> list=new ArrayList<String>();  
-//Adding object in arraylist
-
-list.add("aravinderreddy");  
-list.add("divya");  
+ArrayList<String> list=new ArrayList<String>();//Creating arraylist  
+list.add("aravind");//Adding object in arraylist  
+list.add("Vijay");  
 list.add("Ravi");  
 list.add("Ajay");  
 //Traversing list through Iterator  
 Iterator itr=list.iterator();  
 while(itr.hasNext()){  
 System.out.println(itr.next());  
-}
-}
-}
+}  
+}  
+}  
