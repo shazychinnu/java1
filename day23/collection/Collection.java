@@ -8,11 +8,12 @@ ArrayList<String> list=new ArrayList<String>();
 list.add("aravinderreddy");  
 list.add("divya");  
 list.add("Ravi");  
-list.add("Ajay");  
+alist.add("Ajay");  
 //Traversing list through Iterator  
 Iterator itr=list.iterator();  
 while(itr.hasNext()){  
-System.out.println(itr.next());  
+System.out.println(itr.next()); 
+ 
 }
 }
-}
+}  
