@@ -1,5 +1,91 @@
-python3 -c "
-import zipfile
-with zipfile.ZipFile('/tmp/test_merged.xlsm', 'r') as z:
-    print('Files:', z.namelist())
-"
+def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
+    """
+    Merges xlsx data into xlsm template.
+    Uses template as base — guarantees single ThisWorkbook, no duplicates.
+    """
+    # Read all files from xlsx (has our data + images)
+    xlsx_files = {}
+    with zipfile.ZipFile(BytesIO(xlsx_bytes), "r") as z:
+        for name in z.namelist():
+            xlsx_files[name] = z.read(name)
+
+    # Read all files from xlsm template (has VBA)
+    xlsm_files = {}
+    with zipfile.ZipFile(BytesIO(vba_template_bytes), "r") as z:
+        for name in z.namelist():
+            xlsm_files[name] = z.read(name)
+
+    if "xl/vbaProject.bin" not in xlsm_files:
+        print("WARNING: vbaProject.bin not found in template")
+        return xlsx_bytes
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
+
+        # Start from template as base
+        for path, data in xlsm_files.items():
+
+            # Skip template worksheets — we use xlsx worksheets
+            if path.startswith("xl/worksheets/"):
+                continue
+
+            elif path == "xl/workbook.xml":
+                # Use xlsx workbook.xml — has correct sheet names
+                zout.writestr(path, xlsx_files.get(path, data))
+
+            elif path == "xl/_rels/workbook.xml.rels":
+                # Use xlsx rels + add vbaProject relationship
+                xlsx_rels = xlsx_files.get(path, b"").decode()
+                if "vbaProject" not in xlsx_rels:
+                    xlsx_rels = xlsx_rels.replace(
+                        "</Relationships>",
+                        '<Relationship Id="rIdVBA1" '
+                        'Type="http://schemas.microsoft.com/office/'
+                        '2006/relationships/vbaProject" '
+                        'Target="vbaProject.bin"/>'
+                        "</Relationships>"
+                    )
+                zout.writestr(path, xlsx_rels.encode())
+
+            elif path == "[Content_Types].xml":
+                # Use xlsx content types + change to xlsm + add vba
+                content = xlsx_files.get(path, data).decode()
+                content = content.replace(
+                    'ContentType="application/vnd.openxmlformats-officedocument'
+                    '.spreadsheetml.sheet.main+xml"',
+                    'ContentType="application/vnd.ms-excel.sheet'
+                    '.macroEnabled.main+xml"'
+                )
+                if "vbaProject.bin" not in content:
+                    content = content.replace(
+                        "</Types>",
+                        '<Override PartName="/xl/vbaProject.bin" '
+                        'ContentType="application/vnd.ms-office.vbaProject"/>'
+                        "</Types>"
+                    )
+                zout.writestr(path, content.encode())
+
+            elif path == "xl/styles.xml":
+                # Use xlsx styles — has our cell formatting
+                zout.writestr(path, xlsx_files.get(path, data))
+
+            elif path == "xl/vbaProject.bin":
+                # Keep template VBA — this is the whole point
+                zout.writestr(path, data)
+
+            else:
+                # Keep template version for everything else
+                zout.writestr(path, data)
+
+        # Add all xlsx worksheet files + drawings + media
+        for path, data in xlsx_files.items():
+            if (path.startswith("xl/worksheets/") or
+                path.startswith("xl/worksheets/_rels/") or
+                path.startswith("xl/drawings/") or
+                path.startswith("xl/drawings/_rels/") or
+                path.startswith("xl/media/") or
+                path == "xl/sharedStrings.xml"):
+                zout.writestr(path, data)
+
+    print("VBA injection complete, size:", len(output.getvalue()))
+    return output.getvalue()
