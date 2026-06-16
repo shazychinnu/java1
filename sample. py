@@ -1,86 +1,19 @@
-def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
-    import re
+python3 << 'EOF'
+import zipfile
 
-    # Extract vbaProject.bin from template
-    template_buf = BytesIO(vba_template_bytes)
-    vba_bin      = None
+# Check what's in a normal openpyxl-saved xlsx
+from openpyxl import Workbook
+from io import BytesIO
 
-    with zipfile.ZipFile(template_buf, "r") as zt:
-        if "xl/vbaProject.bin" in zt.namelist():
-            vba_bin = zt.read("xl/vbaProject.bin")
+wb = Workbook()
+buf = BytesIO()
+wb.save(buf)
+xlsx_bytes = buf.getvalue()
 
-    if not vba_bin:
-        print("WARNING: vbaProject.bin not found in template")
-        return xlsx_bytes
-
-    input_buf  = BytesIO(xlsx_bytes)
-    output_buf = BytesIO()
-
-    with zipfile.ZipFile(input_buf, "r") as zin, \
-         zipfile.ZipFile(output_buf, "w", zipfile.ZIP_DEFLATED) as zout:
-
-        for item in zin.infolist():
-            path = item.filename
-            data = zin.read(path)
-
-            # Skip any existing vbaProject completely
-            if path == "xl/vbaProject.bin":
-                continue
-
-            if path == "[Content_Types].xml":
-                content = data.decode("utf-8")
-
-                # Remove any existing vbaProject references
-                content = re.sub(
-                    r'<Override[^/]*/xl/vbaProject\.bin[^/]*/>', 
-                    '', content
-                )
-                content = re.sub(
-                    r'<Default[^>]*vbaProject[^>]*/>', 
-                    '', content
-                )
-
-                # Change to xlsm content type
-                content = content.replace(
-                    'ContentType="application/vnd.openxmlformats-officedocument'
-                    '.spreadsheetml.sheet.main+xml"',
-                    'ContentType="application/vnd.ms-excel.sheet'
-                    '.macroEnabled.main+xml"'
-                )
-
-                # Add fresh vbaProject content type
-                content = content.replace(
-                    "</Types>",
-                    '<Override PartName="/xl/vbaProject.bin" '
-                    'ContentType="application/vnd.ms-office.vbaProject"/>'
-                    "</Types>"
-                )
-                zout.writestr(item, content.encode("utf-8"))
-
-            elif path == "xl/_rels/workbook.xml.rels":
-                content = data.decode("utf-8")
-
-                # Remove any existing vbaProject relationship
-                content = re.sub(
-                    r'<Relationship[^>]*vbaProject[^>]*/>', 
-                    '', content
-                )
-
-                # Add fresh vbaProject relationship
-                content = content.replace(
-                    "</Relationships>",
-                    '<Relationship Id="rIdVBA1" '
-                    'Type="http://schemas.microsoft.com/office/'
-                    '2006/relationships/vbaProject" '
-                    'Target="vbaProject.bin"/>'
-                    "</Relationships>"
-                )
-                zout.writestr(item, content.encode("utf-8"))
-
-            else:
-                zout.writestr(item, data)
-
-        # Add clean vbaProject.bin from template
-        zout.writestr("xl/vbaProject.bin", vba_bin)
-
-    return output_buf.getvalue()
+with zipfile.ZipFile(BytesIO(xlsx_bytes), "r") as z:
+    print("Normal openpyxl xlsx files:")
+    for f in z.namelist():
+        print(" ", f)
+    print("\nworkbook.xml.rels:")
+    print(z.read("xl/_rels/workbook.xml.rels").decode())
+EOF
