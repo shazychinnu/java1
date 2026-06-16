@@ -1,19 +1,14 @@
-python3 << 'EOF'
-import zipfile
-
-# Check what's in a normal openpyxl-saved xlsx
-from openpyxl import Workbook
-from io import BytesIO
-
-wb = Workbook()
-buf = BytesIO()
-wb.save(buf)
-xlsx_bytes = buf.getvalue()
-
-with zipfile.ZipFile(BytesIO(xlsx_bytes), "r") as z:
-    print("Normal openpyxl xlsx files:")
-    for f in z.namelist():
-        print(" ", f)
-    print("\nworkbook.xml.rels:")
-    print(z.read("xl/_rels/workbook.xml.rels").decode())
-EOF
+# DEBUG — analyse template structure
+            if template_file:
+                import io as _io
+                _tdata = template_file.read()
+                template_file.seek(0)
+                with open("/tmp/vba_template_debug.xlsm", "wb") as _f:
+                    _f.write(_tdata)
+                import zipfile as _zf
+                with _zf.ZipFile(_io.BytesIO(_tdata), "r") as _z:
+                    print("TEMPLATE files:", _z.namelist())
+                    if "xl/_rels/workbook.xml.rels" in _z.namelist():
+                        print("TEMPLATE rels:", _z.read("xl/_rels/workbook.xml.rels").decode())
+                    if "[Content_Types].xml" in _z.namelist():
+                        print("TEMPLATE content types:", _z.read("[Content_Types].xml").decode())
