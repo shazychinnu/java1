@@ -1,8 +1,4 @@
 def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
-    """
-    Uses template as BASE — copies vbaProject.bin into xlsx.
-    Fixes duplicate ThisWorkbook issue by ensuring clean injection.
-    """
     import re
 
     # Extract vbaProject.bin from template
@@ -27,8 +23,23 @@ def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
             path = item.filename
             data = zin.read(path)
 
+            # Skip any existing vbaProject completely
+            if path == "xl/vbaProject.bin":
+                continue
+
             if path == "[Content_Types].xml":
                 content = data.decode("utf-8")
+
+                # Remove any existing vbaProject references
+                content = re.sub(
+                    r'<Override[^/]*/xl/vbaProject\.bin[^/]*/>', 
+                    '', content
+                )
+                content = re.sub(
+                    r'<Default[^>]*vbaProject[^>]*/>', 
+                    '', content
+                )
+
                 # Change to xlsm content type
                 content = content.replace(
                     'ContentType="application/vnd.openxmlformats-officedocument'
@@ -36,32 +47,35 @@ def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
                     'ContentType="application/vnd.ms-excel.sheet'
                     '.macroEnabled.main+xml"'
                 )
-                # Add vbaProject content type
-                if "vbaProject.bin" not in content:
-                    content = content.replace(
-                        "</Types>",
-                        '<Override PartName="/xl/vbaProject.bin" '
-                        'ContentType="application/vnd.ms-office.vbaProject"/>'
-                        "</Types>"
-                    )
+
+                # Add fresh vbaProject content type
+                content = content.replace(
+                    "</Types>",
+                    '<Override PartName="/xl/vbaProject.bin" '
+                    'ContentType="application/vnd.ms-office.vbaProject"/>'
+                    "</Types>"
+                )
                 zout.writestr(item, content.encode("utf-8"))
 
             elif path == "xl/_rels/workbook.xml.rels":
                 content = data.decode("utf-8")
-                if "vbaProject.bin" not in content:
-                    content = content.replace(
-                        "</Relationships>",
-                        '<Relationship Id="rIdVBA1" '
-                        'Type="http://schemas.microsoft.com/office/'
-                        '2006/relationships/vbaProject" '
-                        'Target="vbaProject.bin"/>'
-                        "</Relationships>"
-                    )
-                zout.writestr(item, content.encode("utf-8"))
 
-            # Skip existing vbaProject if any
-            elif path == "xl/vbaProject.bin":
-                pass
+                # Remove any existing vbaProject relationship
+                content = re.sub(
+                    r'<Relationship[^>]*vbaProject[^>]*/>', 
+                    '', content
+                )
+
+                # Add fresh vbaProject relationship
+                content = content.replace(
+                    "</Relationships>",
+                    '<Relationship Id="rIdVBA1" '
+                    'Type="http://schemas.microsoft.com/office/'
+                    '2006/relationships/vbaProject" '
+                    'Target="vbaProject.bin"/>'
+                    "</Relationships>"
+                )
+                zout.writestr(item, content.encode("utf-8"))
 
             else:
                 zout.writestr(item, data)
