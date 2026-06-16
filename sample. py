@@ -1,20 +1,114 @@
 python3 << 'EOF'
-from openpyxl import load_workbook
+import zipfile, re
 from io import BytesIO
-import zipfile, shutil
 
-# Test: can we copy sheets from xlsx into xlsm?
-# Load template xlsm
-template_path = "/tmp/vba_template_debug.xlsm"
+def merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes):
+    """
+    Use xlsm as base, replace its worksheet data with xlsx data.
+    This guarantees only ONE ThisWorkbook — no duplicates.
+    """
+    # Read all files from xlsx (has our data + images)
+    xlsx_files = {}
+    with zipfile.ZipFile(BytesIO(xlsx_bytes), "r") as z:
+        for name in z.namelist():
+            xlsx_files[name] = z.read(name)
+    
+    # Read all files from xlsm (has VBA)
+    xlsm_files = {}
+    with zipfile.ZipFile(BytesIO(xlsm_bytes), "r") as z:
+        for name in z.namelist():
+            xlsm_files[name] = z.read(name)
+    
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
+        
+        # Start with xlsm as base
+        for path, data in xlsm_files.items():
+            
+            # Replace worksheet data from xlsx
+            if path.startswith("xl/worksheets/"):
+                # Skip template's sheet1 — we'll add xlsx sheets
+                continue
+            
+            elif path == "xl/workbook.xml":
+                # Use xlsx workbook.xml (has correct sheet refs)
+                zout.writestr(path, xlsx_files.get(path, data))
+            
+            elif path == "xl/_rels/workbook.xml.rels":
+                # Use xlsx rels but ADD vbaProject relationship
+                xlsx_rels = xlsx_files.get(path, b"").decode()
+                if "vbaProject" not in xlsx_rels:
+                    xlsx_rels = xlsx_rels.replace(
+                        "</Relationships>",
+                        '<Relationship Id="rIdVBA1" '
+                        'Type="http://schemas.microsoft.com/office/'
+                        '2006/relationships/vbaProject" '
+                        'Target="vbaProject.bin"/>'
+                        "</Relationships>"
+                    )
+                zout.writestr(path, xlsx_rels.encode())
+            
+            elif path == "[Content_Types].xml":
+                # Use xlsx content types but change to xlsm + add vba
+                content = xlsx_files.get(path, data).decode()
+                content = content.replace(
+                    'ContentType="application/vnd.openxmlformats-officedocument'
+                    '.spreadsheetml.sheet.main+xml"',
+                    'ContentType="application/vnd.ms-excel.sheet'
+                    '.macroEnabled.main+xml"'
+                )
+                if "vbaProject.bin" not in content:
+                    content = content.replace(
+                        "</Types>",
+                        '<Override PartName="/xl/vbaProject.bin" '
+                        'ContentType="application/vnd.ms-office.vbaProject"/>'
+                        "</Types>"
+                    )
+                zout.writestr(path, content.encode())
+            
+            elif path == "xl/vbaProject.bin":
+                # Keep xlsm VBA
+                zout.writestr(path, data)
+            
+            elif path == "xl/styles.xml":
+                # Use xlsx styles (has our formatting)
+                zout.writestr(path, xlsx_files.get(path, data))
+            
+            else:
+                # Keep xlsm version for everything else
+                zout.writestr(path, data)
+        
+        # Add xlsx worksheet files
+        for path, data in xlsx_files.items():
+            if path.startswith("xl/worksheets/") or \
+               path.startswith("xl/worksheets/_rels/") or \
+               path.startswith("xl/drawings/") or \
+               path.startswith("xl/drawings/_rels/") or \
+               path.startswith("xl/media/") or \
+               path == "xl/sharedStrings.xml":
+                zout.writestr(path, data)
+    
+    return output.getvalue()
 
-with open(template_path, "rb") as f:
-    template_bytes = f.read()
+# Test it
+from openpyxl import Workbook
+wb = Workbook()
+ws = wb.active
+ws["A1"] = "TEST"
+buf = BytesIO()
+wb.save(buf)
+xlsx_bytes = buf.getvalue()
 
-print("Template size:", len(template_bytes))
+with open("/tmp/vba_template_debug.xlsm", "rb") as f:
+    xlsm_bytes = f.read()
 
-# List template sheets
-with zipfile.ZipFile(BytesIO(template_bytes), "r") as z:
-    print("Template files:", z.namelist())
-    rels = z.read("xl/_rels/workbook.xml.rels").decode()
-    print("Rels:", rels[:500])
+result = merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes)
+with open("/tmp/test_merged.xlsm", "wb") as f:
+    f.write(result)
+
+print("Done! Size:", len(result))
+print("Files in output:")
+with zipfile.ZipFile(BytesIO(result), "r") as z:
+    for name in z.namelist():
+        print(" ", name)
 EOF
