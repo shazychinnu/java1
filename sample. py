@@ -1,51 +1,84 @@
-# DEBUG — analyse template structure
-            if template_file:
-                import io as _io
-                _tdata = template_file.read()
-                template_file.seek(0)
-                with open("/tmp/vba_template_debug.xlsm", "wb") as _f:
-                    _f.write(_tdata)
-                import zipfile as _zf
-                with _zf.ZipFile(_io.BytesIO(_tdata), "r") as _z:
-                    print("TEMPLATE files:", _z.namelist())
-                    if "xl/_rels/workbook.xml.rels" in _z.namelist():
-                        print("TEMPLATE rels:", _z.read("xl/_rels/workbook.xml.rels").decode())
-                    if "[Content_Types].xml" in _z.namelist():
-                        print("TEMPLATE content types:", _z.read("[Content_Types].xml").decode())
+def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
+    import re
 
+    # Extract ONLY vbaProject.bin from template — nothing else
+    template_buf = BytesIO(vba_template_bytes)
+    vba_bin      = None
 
+    with zipfile.ZipFile(template_buf, "r") as zt:
+        if "xl/vbaProject.bin" in zt.namelist():
+            vba_bin = zt.read("xl/vbaProject.bin")
 
-python3 -c "
-import zipfile
-with zipfile.ZipFile('/tmp/vba_template_debug.xlsm', 'r') as z:
-    print('Files:', z.namelist())
-    print('Rels:', z.read('xl/_rels/workbook.xml.rels').decode())
+    if not vba_bin:
+        print("WARNING: vbaProject.bin not found in template")
+        return xlsx_bytes
 
+    print("VBA bin size:", len(vba_bin))
 
+    input_buf  = BytesIO(xlsx_bytes)
+    output_buf = BytesIO()
 
+    with zipfile.ZipFile(input_buf, "r") as zin, \
+         zipfile.ZipFile(output_buf, "w", zipfile.ZIP_DEFLATED) as zout:
 
+        for item in zin.infolist():
+            path = item.filename
+            data = zin.read(path)
 
-"python3 << 'EOF'
-import zipfile, sys
+            if path == "[Content_Types].xml":
+                content = data.decode("utf-8")
 
-# You need to upload vba_template.xlsm to Cloud9 first
-# OR read it from the request in views.py for analysis
+                # Remove any existing vbaProject references first
+                content = re.sub(
+                    r'<Override[^>]*vbaProject\.bin[^>]*/?>',
+                    '', content
+                )
 
-# For now let's check what files are in the template
-# by reading the one sent from frontend during a request
-# We'll add debug to views.py instead
+                # Change xlsx content type → xlsm
+                content = content.replace(
+                    'ContentType="application/vnd.openxmlformats-officedocument'
+                    '.spreadsheetml.sheet.main+xml"',
+                    'ContentType="application/vnd.ms-excel.sheet'
+                    '.macroEnabled.main+xml"'
+                )
 
-# Check if template exists anywhere on Cloud9
-import os
-paths = [
-    "/home/ec2-user/environment/vba_template.xlsm",
-    "/tmp/vba_template.xlsm",
-]
-for p in paths:
-    if os.path.exists(p):
-        print(f"Found: {p}")
-        with zipfile.ZipFile(p, "r") as z:
-            print("Files:", z.namelist())
-    else:
-        print(f"Not found: {p}")
-EOF
+                # Add vbaProject content type
+                content = content.replace(
+                    "</Types>",
+                    '<Override PartName="/xl/vbaProject.bin" '
+                    'ContentType="application/vnd.ms-office.vbaProject"/>'
+                    "</Types>"
+                )
+                zout.writestr(item, content.encode("utf-8"))
+
+            elif path == "xl/_rels/workbook.xml.rels":
+                content = data.decode("utf-8")
+
+                # Remove any existing vbaProject relationship
+                content = re.sub(
+                    r'<Relationship[^>]*vbaProject[^>]*/?>',
+                    '', content
+                )
+
+                # Add vbaProject relationship
+                content = content.replace(
+                    "</Relationships>",
+                    '<Relationship Id="rIdVBA1" '
+                    'Type="http://schemas.microsoft.com/office/'
+                    '2006/relationships/vbaProject" '
+                    'Target="vbaProject.bin"/>'
+                    "</Relationships>"
+                )
+                zout.writestr(item, content.encode("utf-8"))
+
+            # Skip existing vbaProject.bin — we add fresh one below
+            elif path == "xl/vbaProject.bin":
+                continue
+
+            else:
+                zout.writestr(item, data)
+
+        # Add ONLY vbaProject.bin from template
+        zout.writestr("xl/vbaProject.bin", vba_bin)
+
+    return output_buf.getvalue()
