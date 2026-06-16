@@ -1,19 +1,14 @@
-python3 << 'EOF'
-import zipfile, re
+cat > /tmp/test_merge.py << 'PYEOF'
+import zipfile
 from io import BytesIO
+from openpyxl import Workbook
 
 def merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes):
-    """
-    Use xlsm as base, replace its worksheet data with xlsx data.
-    This guarantees only ONE ThisWorkbook — no duplicates.
-    """
-    # Read all files from xlsx (has our data + images)
     xlsx_files = {}
     with zipfile.ZipFile(BytesIO(xlsx_bytes), "r") as z:
         for name in z.namelist():
             xlsx_files[name] = z.read(name)
     
-    # Read all files from xlsm (has VBA)
     xlsm_files = {}
     with zipfile.ZipFile(BytesIO(xlsm_bytes), "r") as z:
         for name in z.namelist():
@@ -21,21 +16,12 @@ def merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes):
     
     output = BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
-        
-        # Start with xlsm as base
         for path, data in xlsm_files.items():
-            
-            # Replace worksheet data from xlsx
             if path.startswith("xl/worksheets/"):
-                # Skip template's sheet1 — we'll add xlsx sheets
                 continue
-            
             elif path == "xl/workbook.xml":
-                # Use xlsx workbook.xml (has correct sheet refs)
                 zout.writestr(path, xlsx_files.get(path, data))
-            
             elif path == "xl/_rels/workbook.xml.rels":
-                # Use xlsx rels but ADD vbaProject relationship
                 xlsx_rels = xlsx_files.get(path, b"").decode()
                 if "vbaProject" not in xlsx_rels:
                     xlsx_rels = xlsx_rels.replace(
@@ -47,9 +33,7 @@ def merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes):
                         "</Relationships>"
                     )
                 zout.writestr(path, xlsx_rels.encode())
-            
             elif path == "[Content_Types].xml":
-                # Use xlsx content types but change to xlsm + add vba
                 content = xlsx_files.get(path, data).decode()
                 content = content.replace(
                     'ContentType="application/vnd.openxmlformats-officedocument'
@@ -65,20 +49,11 @@ def merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes):
                         "</Types>"
                     )
                 zout.writestr(path, content.encode())
-            
-            elif path == "xl/vbaProject.bin":
-                # Keep xlsm VBA
-                zout.writestr(path, data)
-            
             elif path == "xl/styles.xml":
-                # Use xlsx styles (has our formatting)
                 zout.writestr(path, xlsx_files.get(path, data))
-            
             else:
-                # Keep xlsm version for everything else
                 zout.writestr(path, data)
         
-        # Add xlsx worksheet files
         for path, data in xlsx_files.items():
             if path.startswith("xl/worksheets/") or \
                path.startswith("xl/worksheets/_rels/") or \
@@ -90,8 +65,6 @@ def merge_xlsx_into_xlsm(xlsx_bytes, xlsm_bytes):
     
     return output.getvalue()
 
-# Test it
-from openpyxl import Workbook
 wb = Workbook()
 ws = wb.active
 ws["A1"] = "TEST"
@@ -107,8 +80,7 @@ with open("/tmp/test_merged.xlsm", "wb") as f:
     f.write(result)
 
 print("Done! Size:", len(result))
-print("Files in output:")
 with zipfile.ZipFile(BytesIO(result), "r") as z:
-    for name in z.namelist():
-        print(" ", name)
-EOF
+    print("Files:", z.namelist())
+PYEOF
+python3 /tmp/test_merge.py
