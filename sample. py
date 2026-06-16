@@ -20,4 +20,32 @@ import zipfile
 with zipfile.ZipFile('/tmp/vba_template_debug.xlsm', 'r') as z:
     print('Files:', z.namelist())
     print('Rels:', z.read('xl/_rels/workbook.xml.rels').decode())
-"
+
+
+
+
+
+"python3 << 'EOF'
+import zipfile, sys
+
+# You need to upload vba_template.xlsm to Cloud9 first
+# OR read it from the request in views.py for analysis
+
+# For now let's check what files are in the template
+# by reading the one sent from frontend during a request
+# We'll add debug to views.py instead
+
+# Check if template exists anywhere on Cloud9
+import os
+paths = [
+    "/home/ec2-user/environment/vba_template.xlsm",
+    "/tmp/vba_template.xlsm",
+]
+for p in paths:
+    if os.path.exists(p):
+        print(f"Found: {p}")
+        with zipfile.ZipFile(p, "r") as z:
+            print("Files:", z.namelist())
+    else:
+        print(f"Not found: {p}")
+EOF
