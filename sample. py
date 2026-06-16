@@ -12,3 +12,12 @@
                         print("TEMPLATE rels:", _z.read("xl/_rels/workbook.xml.rels").decode())
                     if "[Content_Types].xml" in _z.namelist():
                         print("TEMPLATE content types:", _z.read("[Content_Types].xml").decode())
+
+
+
+python3 -c "
+import zipfile
+with zipfile.ZipFile('/tmp/vba_template_debug.xlsm', 'r') as z:
+    print('Files:', z.namelist())
+    print('Rels:', z.read('xl/_rels/workbook.xml.rels').decode())
+"
