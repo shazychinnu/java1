@@ -1,0 +1,72 @@
+def inject_vba_into_xlsx(xlsx_bytes: bytes, vba_template_bytes: bytes) -> bytes:
+    """
+    Uses template as BASE — copies vbaProject.bin into xlsx.
+    Fixes duplicate ThisWorkbook issue by ensuring clean injection.
+    """
+    import re
+
+    # Extract vbaProject.bin from template
+    template_buf = BytesIO(vba_template_bytes)
+    vba_bin      = None
+
+    with zipfile.ZipFile(template_buf, "r") as zt:
+        if "xl/vbaProject.bin" in zt.namelist():
+            vba_bin = zt.read("xl/vbaProject.bin")
+
+    if not vba_bin:
+        print("WARNING: vbaProject.bin not found in template")
+        return xlsx_bytes
+
+    input_buf  = BytesIO(xlsx_bytes)
+    output_buf = BytesIO()
+
+    with zipfile.ZipFile(input_buf, "r") as zin, \
+         zipfile.ZipFile(output_buf, "w", zipfile.ZIP_DEFLATED) as zout:
+
+        for item in zin.infolist():
+            path = item.filename
+            data = zin.read(path)
+
+            if path == "[Content_Types].xml":
+                content = data.decode("utf-8")
+                # Change to xlsm content type
+                content = content.replace(
+                    'ContentType="application/vnd.openxmlformats-officedocument'
+                    '.spreadsheetml.sheet.main+xml"',
+                    'ContentType="application/vnd.ms-excel.sheet'
+                    '.macroEnabled.main+xml"'
+                )
+                # Add vbaProject content type
+                if "vbaProject.bin" not in content:
+                    content = content.replace(
+                        "</Types>",
+                        '<Override PartName="/xl/vbaProject.bin" '
+                        'ContentType="application/vnd.ms-office.vbaProject"/>'
+                        "</Types>"
+                    )
+                zout.writestr(item, content.encode("utf-8"))
+
+            elif path == "xl/_rels/workbook.xml.rels":
+                content = data.decode("utf-8")
+                if "vbaProject.bin" not in content:
+                    content = content.replace(
+                        "</Relationships>",
+                        '<Relationship Id="rIdVBA1" '
+                        'Type="http://schemas.microsoft.com/office/'
+                        '2006/relationships/vbaProject" '
+                        'Target="vbaProject.bin"/>'
+                        "</Relationships>"
+                    )
+                zout.writestr(item, content.encode("utf-8"))
+
+            # Skip existing vbaProject if any
+            elif path == "xl/vbaProject.bin":
+                pass
+
+            else:
+                zout.writestr(item, data)
+
+        # Add clean vbaProject.bin from template
+        zout.writestr("xl/vbaProject.bin", vba_bin)
+
+    return output_buf.getvalue()
